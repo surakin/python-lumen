@@ -242,21 +242,21 @@ class Server:
                   s.sendto(json.dumps(data), address)
               except TypeError as e:
                 print(e.args)
-                raise
+                pass
               except RuntimeError as e:
                 print(e.errno, e.strerror)
-                raise
+                pass
               except:
                 print("Exception: ", sys.exc_info()[0])
-                raise
+                pass
           except KeyError:
             # unknown command
-            raise
+            pass
           except:
-            raise
+            pass
     except:
       # die. we will be back
-      raise
+      pass
     sock.close()
 
     print("End server")
