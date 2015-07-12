@@ -74,45 +74,65 @@ class Server:
 
   def devicename(self):
     name = self.connect().read_by_handle(0x03)
-    print(name)
+    return name
 
   def status(self):
-    status = self.connect().read_by_handle(0x25)
-    print(status)
+    data = bytearray(self.connect().read_by_handle(0x25))
+    modes = { 0x50: 'cool', 0x51: 'warm', 0x52 : 'disco1', 0x53 : 'disco2', 0x54: 'normal' }
+    status = {}
+    status["on"] = (data[0] == 0x01)
+    try:
+      status["mode"] = modes[data[6]]
+      if status["mode"] == "normal":
+        if data[1] == 0xdf and data[2] == 0xd9 and (data[3] == 0x9a or data[3] == 0x9b) :
+          status["mode"] = "warm_white"
+          warm_percent= { 0x58: 100, 0xa3: 90, 0xb5 : 70, 0x87 : 50, 0x99: 30, 0xf2 : 0 }
+          status["warm_percent"] = warm_percent[data[4]]
+    except:
+      pass
+    
+    return status
 
   def off(self):
     self.data1[0] = 0x00
     self.connect().write_by_handle(0x25, str(self.data1))
+    return 0
 
   def on(self):
     self.data1[0] = 0x01
     self.data1[4] = 0xb5
     self.connect().write_by_handle(0x25, str(self.data1))
+    return 0
 
   def cool(self):
     self.data1[0] = 0x01
     self.data1[6] = 0x50
     self.connect().write_by_handle(0x25, str(self.data1))
+    return 0
 
   def warm(self):
     self.data1[0] = 0x01
     self.data1[6] = 0x51
     self.connect().write_by_handle(0x25, str(self.data1))
+    return 0
 
   def disco1(self):
     self.data1[0] = 0x01
     self.data1[6] = 0x52
     self.connect().write_by_handle(0x25, str(self.data1))
+    return 0
 
   def disco2(self):
     self.data1[0] = 0x01
     self.data1[6] = 0x53
     self.connect().write_by_handle(0x25, str(self.data1))
+    return 0
 
   def normal(self):
     self.data1[0] = 0x01
     self.data1[6] = 0x54
     self.connect().write_by_handle(0x25, str(self.data1))
+    return 0
 
   def warm_white(self, n):
     self.data1[0] = 0x01
@@ -144,9 +164,10 @@ class Server:
       self.data1[3] = 0x9b
       self.data1[4] = 0xf2
     self.connect().write_by_handle(0x25, str(self.data1))
+    return 0
       
   def white(self):
-    self.warm_white(100)
+    return self.warm_white(100)
     
   def color(self, r, g, b):
     self.data1[0] = 0x01
@@ -163,6 +184,7 @@ class Server:
     self.data1[3] = int(round(y * 105) + 120)
     self.data1[4] = int(round((1 - k) * 15) + 240)
     self.connect().write_by_handle(0x25, str(self.data1))
+    return 0
 
   def restart(self):
     print("restart")
@@ -173,19 +195,15 @@ class Server:
     self.battery()
       
   def server(self):
-    
     self.alive = True
     def handler(sig, frame):
       if sig == signal.SIGTERM:
         alive = False
-        print("Kill server")
-        os.remove(SERVER_SOCKET)
-        sys.exit(0)
     
     signal.signal(signal.SIGTERM, handler)
 
     print("Start server")
-    self.battery()
+    #self.battery()
     
     lastping = time.time()
     
@@ -203,32 +221,42 @@ class Server:
           self.ping()
           
         #get commands
-        r, w, e = select.select([sock], [], [sock], 0.5)
+        
+        try:
+          r, w, e = select.select([sock], [], [sock], 0.5)
+        except select.error as e:
+          alive = False
+          pass
+        
         for s in r:
           try:
-            datagram = s.recv(1024)
+            datagram, address = s.recvfrom(1024)
             args = json.loads(datagram)
             if self.commands[args[1]] != None:
               try:
                 #print args[1] + "(" + str(args[2:]) + ")"
-                self.commands[args[1]](*args[2:])
+                if address == None:
+                  self.commands[args[1]](*args[2:])
+                else:
+                  data = self.commands[args[1]](*args[2:])
+                  s.sendto(json.dumps(data), address)
               except TypeError as e:
                 print(e.args)
-                pass
+                raise
               except RuntimeError as e:
                 print(e.errno, e.strerror)
-                pass
+                raise
               except:
                 print("Exception: ", sys.exc_info()[0])
-                pass
+                raise
           except KeyError:
             # unknown command
-            pass
+            raise
           except:
-            pass
+            raise
     except:
       # die. we will be back
-      pass
+      raise
     sock.close()
 
     print("End server")
@@ -238,6 +266,7 @@ class Server:
       os.execvp(sys.argv[0], sys.argv)
 
   def __init__(self):
+    self.connect()
     self.restart = None
     self.alive = None
     self.commands = {}
@@ -272,12 +301,19 @@ should_launch_server()
 if os.path.exists(SERVER_SOCKET):
   client = socket.socket( socket.AF_UNIX, socket.SOCK_DGRAM )
   try:
+    client.bind("/tmp/lumen_client")
+  except socket.error as e:
+    os.remove("/tmp/lumen_client")
+    client.bind("/tmp/lumen_client")
+  try:
     client.connect(SERVER_SOCKET)
     client.send(json.dumps(sys.argv))
+    response = client.recv(1024)
+    print(response)
     client.close()
+    os.remove("/tmp/lumen_client")
   except socket.error as e:
     os.remove(SERVER_SOCKET)
     should_launch_server()
 
     
-
