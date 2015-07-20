@@ -190,6 +190,9 @@ class Server:
     print("restart")
     #print(sys.argv[0], sys.argv)
     self.restart = True
+
+  def stop(self):
+    self.alive = False
     
   def ping(self):
     self.battery()
@@ -287,6 +290,7 @@ class Server:
     register("status", self.status)
     register("devicename", self.devicename)
     register("battery", self.battery)
+    register("stop", self.stop)
 
     self.server()
 
